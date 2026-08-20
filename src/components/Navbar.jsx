@@ -1,9 +1,19 @@
 "use client";
 
 import React from "react";
-import { TrendingUp, Cpu, RefreshCw } from "lucide-react";
+import { TrendingUp, Cpu, RefreshCw, User, LogOut } from "lucide-react";
+import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
+import { useAuthContext } from "../context/AuthContext";
 
 export default function Navbar({ onClearChat, isConnected = true }) {
+  const { status, appUser, signOut } = useAuthContext();
+  const { user, isSignedIn } = useUser();
+
+  const userEmail = appUser?.email || user?.primaryEmailAddress?.emailAddress;
+  const userDisplayName = appUser?.username || user?.username || user?.firstName || userEmail?.split("@")[0] || "User";
+  const userIsLoggedIn = status === "authenticated" || isSignedIn;
+
   return (
     <nav className="h-16 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30 select-none">
       {/* Brand & Title */}
@@ -21,7 +31,7 @@ export default function Navbar({ onClearChat, isConnected = true }) {
         </div>
       </div>
 
-      {/* Connection & LLM Status Controls */}
+      {/* Connection, LLM Status & Account Controls */}
       <div className="flex items-center gap-3 sm:gap-6">
         {/* Backend Connectivity Status */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50 text-xs">
@@ -40,6 +50,31 @@ export default function Navbar({ onClearChat, isConnected = true }) {
           <Cpu className="w-3.5 h-3.5 text-indigo-400" />
           <span>LLM: Gemini / Groq</span>
         </div>
+
+        {/* Account: signed-in user email + sign out, or sign-in link */}
+        {userIsLoggedIn && userEmail ? (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs text-zinc-200">
+            <User className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="max-w-[180px] truncate font-medium" title={userEmail}>
+              {userDisplayName}
+            </span>
+            <button
+              onClick={signOut}
+              className="p-1 rounded-md text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 cursor-pointer transition-colors ml-1"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/sign-in"
+            className="hidden md:flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/20 transition-all duration-200 cursor-pointer"
+          >
+            <User className="w-3.5 h-3.5" />
+            Sign in
+          </Link>
+        )}
 
         {/* Reset Chat Session Action */}
         <button
