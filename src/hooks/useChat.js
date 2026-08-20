@@ -2,53 +2,90 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { chatService } from "../services/chatService";
+import { useAuthContext } from "../context/AuthContext";
+
+/**
+ * Parses an SSE response body from the backend. The wire format is:
+ *   event: <name>\n data: <json>\n\n
+ */
+async function readSSE(reader, onEvent) {
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      let eventName = null;
+      let data = null;
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        else if (line.startsWith("data:")) data = line.slice(5).trim();
+      }
+      if (eventName && data) {
+        try {
+          onEvent(eventName, JSON.parse(data));
+        } catch {
+          onEvent(eventName, { raw: data });
+        }
+      }
+    }
+  }
+}
 
 export default function useChat() {
+  const { status: authStatus } = useAuthContext();
+
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isConnected, setIsConnected] = useState(true);
-  const [history, setHistory] = useState([]);
+  const [conversations, setConversations] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [lastUserPrompt, setLastUserPrompt] = useState("");
 
-  // Load chat history from localStorage on mount
-  useEffect(() => {
-    const savedHistory = localStorage.getItem("salary_chat_history");
-    if (savedHistory) {
-      try {
-        const parsed = JSON.parse(savedHistory);
-        setHistory(parsed);
-        if (parsed.length > 0) {
-          // Default to the most recent chat session
-          setCurrentChatId(parsed[0].id);
-          setMessages(parsed[0].messages || []);
-        }
-      } catch (err) {
-        console.error("Failed to parse chat history from localStorage:", err);
-      }
+  // Load the user's conversations whenever the auth state settles (guest or
+  // authenticated). Every request carries a token / guest id, so the backend
+  // only ever returns THIS user's own conversation history.
+  const loadConversations = useCallback(async () => {
+    try {
+      const list = await chatService.listConversations();
+      setConversations(list || []);
+    } catch (e) {
+      console.error("Failed to load conversations:", e);
     }
   }, []);
 
-  // Periodic health check to backend
+  useEffect(() => {
+    if (authStatus === "loading") return;
+    let cancelled = false;
+    chatService
+      .listConversations()
+      .then((list) => {
+        if (!cancelled) setConversations(list || []);
+      })
+      .catch((e) => console.error("Failed to load conversations:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus]);
+
+  // Periodic backend health check.
   useEffect(() => {
     const checkApiHealth = async () => {
-      const active = await chatService.checkConnection();
-      setIsConnected(active);
+      setIsConnected(await chatService.checkConnection());
     };
-
     checkApiHealth();
-    const interval = setInterval(checkApiHealth, 10000); // Check health every 10s
+    const interval = setInterval(checkApiHealth, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // Save history helper
-  const saveHistoryToStorage = useCallback((updatedHistory) => {
-    setHistory(updatedHistory);
-    localStorage.setItem("salary_chat_history", JSON.stringify(updatedHistory));
-  }, []);
-
-  // Start a fresh empty session
   const startNewChat = useCallback(() => {
     setMessages([]);
     setError(null);
@@ -56,130 +93,134 @@ export default function useChat() {
     setCurrentChatId(null);
   }, []);
 
-  // Select a past session from Sidebar
-  const selectChat = useCallback((chatId) => {
-    const session = history.find((h) => h.id === chatId);
-    if (session) {
+  // Select a past conversation (loads its messages from the backend).
+  const selectChat = useCallback(
+    async (chatId) => {
       setCurrentChatId(chatId);
-      setMessages(session.messages || []);
       setError(null);
-    }
-  }, [history]);
+      try {
+        const detail = await chatService.getConversation(chatId);
+        const loaded = (detail.messages || []).map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          sources: m.sources || [],
+          timestamp: m.created_at,
+        }));
+        setMessages(loaded);
+      } catch (e) {
+        setError("Could not load this conversation.");
+      }
+    },
+    []
+  );
 
-  // Send query action with event streaming support
-  const sendMessage = useCallback(async (promptText) => {
-    if (!promptText.trim()) return;
+  const sendMessage = useCallback(
+    async (promptText) => {
+      if (!promptText.trim()) return;
 
-    setError(null);
-    setLastUserPrompt(promptText);
+      setError(null);
+      setLastUserPrompt(promptText);
 
-    // Create user message
-    const userMsg = {
-      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      role: "user",
-      content: promptText,
-      timestamp: new Date().toISOString(),
-      sources: null,
-    };
+      const userMsg = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: promptText,
+        timestamp: new Date().toISOString(),
+        sources: null,
+      };
 
-    // Append user message immediately
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
-    setIsLoading(true);
+      setMessages((prev) => [...prev, userMsg]);
+      setIsLoading(true);
 
-    // Prepare container for the bot response
-    const botMsgId = `bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const botMsg = {
-      id: botMsgId,
-      role: "assistant",
-      content: "",
-      timestamp: new Date().toISOString(),
-      sources: null, // Note: sources cards can render here if sources list is returned
-    };
-
-    try {
-      // Connect to the stream reader
-      const reader = await chatService.getChatStream(promptText, "fast");
-      
-      // Insert empty bot message in list to stream into
-      setMessages((prev) => [...prev, botMsg]);
-
-      const decoder = new TextDecoder("utf-8");
+      const botMsgId = `bot-${Date.now()}`;
       let botContent = "";
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        // Decode binary chunk to text stream
-        const chunkText = decoder.decode(value, { stream: true });
-        botContent += chunkText;
-
-        // Progressively update text stream in real-time
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === botMsgId ? { ...msg, content: botContent } : msg
-          )
-        );
-      }
-
-      // Stream completed successfully, update history
+      let streamSources = [];
       let activeId = currentChatId;
-      let newHistory = [...history];
-      
-      const finalBotMsg = { ...botMsg, content: botContent };
-      const finalMessages = [...updatedMessages, finalBotMsg];
 
-      if (!activeId) {
-        activeId = `session-${Date.now()}`;
-        setCurrentChatId(activeId);
-        
-        const newSession = {
-          id: activeId,
-          title: promptText.length > 28 ? `${promptText.substring(0, 25)}...` : promptText,
-          messages: finalMessages,
+      const applyBot = (content, sources) =>
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== botMsgId),
+          {
+            id: botMsgId,
+            role: "assistant",
+            content,
+            timestamp: new Date().toISOString(),
+            sources: sources || [],
+          },
+        ]);
+
+      // Insert a placeholder bot bubble immediately.
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: botMsgId,
+          role: "assistant",
+          content: "",
           timestamp: new Date().toISOString(),
-        };
-        newHistory = [newSession, ...newHistory];
-      } else {
-        newHistory = newHistory.map((session) => {
-          if (session.id === activeId) {
-            return {
-              ...session,
-              messages: finalMessages,
-              timestamp: new Date().toISOString(),
-            };
-          }
-          return session;
-        });
-      }
-      
-      saveHistoryToStorage(newHistory);
-    } catch (err) {
-      setError(err.message || "Failed to retrieve streaming response from backend.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [messages, currentChatId, history, saveHistoryToStorage]);
+          sources: [],
+        },
+      ]);
 
-  // Retry trigger
+      try {
+        const reader = await chatService.getChatStream(promptText, activeId);
+
+        await readSSE(reader, (eventName, data) => {
+          if (eventName === "meta") {
+            activeId = data.conversation_id || activeId;
+            setCurrentChatId(activeId);
+          } else if (eventName === "sources") {
+            streamSources = data.sources || [];
+          } else if (eventName === "token") {
+            botContent += data.content || "";
+            applyBot(botContent, streamSources);
+          } else if (eventName === "done") {
+            if (data.conversation_id) {
+              activeId = data.conversation_id;
+              setCurrentChatId(activeId);
+            }
+            applyBot(botContent, streamSources);
+          } else if (eventName === "error") {
+            setError(data.detail || data.raw || "Something went wrong.");
+          }
+        });
+
+        applyBot(botContent, streamSources);
+        loadConversations();
+      } catch (err) {
+        // Remove the placeholder bubble on failure.
+        setMessages((prev) => prev.filter((m) => m.id !== botMsgId));
+        setError(err.message || "Failed to retrieve streaming response from backend.");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentChatId, loadConversations]
+  );
+
   const retryLastMessage = useCallback(() => {
     if (!lastUserPrompt) return;
     sendMessage(lastUserPrompt);
   }, [lastUserPrompt, sendMessage]);
 
-  // Clear history list
-  const clearHistory = useCallback(() => {
-    saveHistoryToStorage([]);
+  const clearHistory = useCallback(async () => {
+    for (const c of conversations) {
+      try {
+        await chatService.deleteConversation(c.id);
+      } catch {
+        // Ignore per-item failures.
+      }
+    }
+    setConversations([]);
     startNewChat();
-  }, [saveHistoryToStorage, startNewChat]);
+  }, [conversations, startNewChat]);
 
   return {
     messages,
     isLoading,
     error,
     isConnected,
-    history,
+    history: conversations,
     currentChatId,
     sendMessage,
     retryLastMessage,
