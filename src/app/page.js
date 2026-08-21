@@ -38,10 +38,10 @@ export default function Home() {
 
   if (!isLoaded) {
     return (
-      <div className="w-full h-full min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-50">
+      <div className="w-full h-full min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-50">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-          <span className="text-sm text-zinc-400">Loading session...</span>
+          <span className="text-sm text-slate-500 dark:text-zinc-400">Loading session...</span>
         </div>
       </div>
     );
@@ -52,7 +52,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="flex h-full w-full overflow-hidden bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 transition-colors duration-200">
       {/* Sidebar drawer on left */}
       <Sidebar
         isOpen={isSidebarOpen}
@@ -65,7 +65,7 @@ export default function Home() {
       />
 
       {/* Main chat interface viewport */}
-      <div className="flex flex-1 flex-col h-full overflow-hidden relative bg-zinc-900/20">
+      <div className="flex flex-1 flex-col h-full overflow-hidden relative bg-slate-100/50 dark:bg-zinc-900/20 transition-colors duration-200">
         {/* Mobile top header bar */}
         <Header
           onMenuToggle={() => setIsSidebarOpen(true)}
