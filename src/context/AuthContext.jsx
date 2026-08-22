@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
 import { authService } from "@/services/authService";
-import { setAccessToken } from "@/services/api";
+import { setAccessToken, clearGuestId } from "@/services/api";
 
 const AuthContext = createContext(null);
 
@@ -54,9 +54,18 @@ export function AuthProvider({ children }) {
           email?.split("@")[0] ||
           null;
 
-        const data = await authService.login(clerkToken, { email, username });
+        let data;
+        try {
+          data = await authService.login(clerkToken, { email, username });
+        } catch (firstErr) {
+          // If server was briefly restarting, retry once after 1s delay
+          await new Promise((r) => setTimeout(r, 1000));
+          if (cancelled) return;
+          data = await authService.login(clerkToken, { email, username });
+        }
         if (cancelled) return;
 
+        clearGuestId();
         setAccessToken(data.access_token);
         setAppUser(data.user);
         setProfile(data.user);
@@ -95,6 +104,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       console.error("Logout error:", e);
     }
+    clearGuestId();
     setAccessToken(null);
     setAppUser(null);
     setProfile(null);

@@ -40,7 +40,7 @@ async function readSSE(reader, onEvent) {
 }
 
 export default function useChat() {
-  const { status: authStatus } = useAuthContext();
+  const { status: authStatus, appUser } = useAuthContext();
 
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,16 +65,24 @@ export default function useChat() {
   useEffect(() => {
     if (authStatus === "loading") return;
     let cancelled = false;
+
+    // Reset active chat messages and current conversation state on user switch
+    setMessages([]);
+    setError(null);
+    setIsLoading(false);
+    setCurrentChatId(null);
+
     chatService
       .listConversations()
       .then((list) => {
         if (!cancelled) setConversations(list || []);
       })
       .catch((e) => console.error("Failed to load conversations:", e));
+
     return () => {
       cancelled = true;
     };
-  }, [authStatus]);
+  }, [authStatus, appUser?.id]);
 
   // Periodic backend health check.
   useEffect(() => {
