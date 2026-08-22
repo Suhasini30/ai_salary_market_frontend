@@ -1,8 +1,69 @@
 "use client";
 
 import React, { useState } from "react";
-import { User, Sparkles, Copy, Check, ChevronDown, ChevronUp, FileText, BarChart2 } from "lucide-react";
+import { User, Sparkles, Copy, Check, ChevronDown, ChevronUp, FileText, BarChart2, ExternalLink } from "lucide-react";
 import { formatTime } from "../utils/formatTime";
+
+function parseFormattedLine(line) {
+  if (!line) return "";
+  const regex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+[^.,\s<)]?)|(\*\*[^*]+\*\*)/g;
+  const elements = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(line)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(line.substring(lastIndex, match.index));
+    }
+
+    if (match[1] && match[2]) {
+      // Markdown link [Label](URL)
+      elements.push(
+        <a
+          key={match.index}
+          href={match[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-indigo-600 dark:text-indigo-400 font-semibold underline hover:text-indigo-500 transition-colors break-all inline-flex items-baseline gap-0.5 cursor-pointer mx-0.5"
+        >
+          <span>{match[1]}</span>
+          <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 self-center ml-0.5" />
+        </a>
+      );
+    } else if (match[3]) {
+      // Raw URL
+      const url = match[3];
+      elements.push(
+        <a
+          key={match.index}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-indigo-600 dark:text-indigo-400 font-semibold underline hover:text-indigo-500 transition-colors break-all inline-flex items-baseline gap-0.5 cursor-pointer mx-0.5"
+        >
+          <span>{url}</span>
+          <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 self-center ml-0.5" />
+        </a>
+      );
+    } else if (match[4]) {
+      // Bold text **text**
+      const boldContent = match[4].slice(2, -2);
+      elements.push(
+        <strong key={match.index} className="font-semibold text-slate-900 dark:text-zinc-100">
+          {parseFormattedLine(boldContent)}
+        </strong>
+      );
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < line.length) {
+    elements.push(line.substring(lastIndex));
+  }
+
+  return elements.length > 0 ? elements : line;
+}
 
 export default function MessageBubble({ message }) {
   const { role, content, timestamp, sources } = message;
@@ -42,27 +103,57 @@ export default function MessageBubble({ message }) {
               : "bg-white dark:bg-zinc-900 border-slate-200/90 dark:border-zinc-800/80 text-slate-800 dark:text-zinc-200 rounded-tl-none"
           }`}
         >
-          {/* Simple line break and bold parsing for premium look */}
+          {/* Enhanced Markdown parsing for headings, dividers, lists, and interactive links */}
           <div className="whitespace-pre-wrap select-text">
             {content.split("\n").map((line, idx) => {
-              // Basic bold markdown simulation (**bold**)
-              if (line.includes("**")) {
-                const parts = line.split("**");
+              const trimmed = line.trim();
+
+              // Horizontal rule (--- or *** or ___)
+              if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
+                return <hr key={idx} className="my-3 border-slate-200/80 dark:border-zinc-800/80" />;
+              }
+
+              // Headings (#, ##, ###, ####)
+              if (trimmed.startsWith("#")) {
+                const headingText = trimmed.replace(/^#+\s*/, "");
                 return (
-                  <p key={idx} className="mb-2 last:mb-0">
-                    {parts.map((part, pIdx) => (pIdx % 2 === 1 ? <strong key={pIdx} className="font-semibold text-slate-900 dark:text-zinc-100">{part}</strong> : part))}
-                  </p>
+                  <h3 key={idx} className="font-bold text-slate-900 dark:text-zinc-100 text-sm mt-3 mb-1.5 border-b border-slate-200/50 dark:border-zinc-800/50 pb-1">
+                    {parseFormattedLine(headingText)}
+                  </h3>
                 );
               }
-              // Basic list item simulation
-              if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
+
+              // Bullet lists (- , * , or indented   - )
+              if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                const listText = trimmed.replace(/^[-*]\s+/, "");
                 return (
                   <li key={idx} className="list-disc list-inside ml-2 mb-1.5 text-slate-700 dark:text-zinc-300">
-                    {line.replace(/^[-*]\s+/, "")}
+                    {parseFormattedLine(listText)}
                   </li>
                 );
               }
-              return <p key={idx} className="mb-2 last:mb-0">{line}</p>;
+
+              // Numbered lists (1. , 8. , or indented   8. )
+              const numMatch = trimmed.match(/^(\d+\.)\s+(.*)$/);
+              if (numMatch) {
+                return (
+                  <div key={idx} className="flex items-start gap-1.5 mb-1.5 ml-1">
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400 text-xs mt-0.5">{numMatch[1]}</span>
+                    <span className="text-slate-800 dark:text-zinc-200">{parseFormattedLine(numMatch[2])}</span>
+                  </div>
+                );
+              }
+
+              // Empty lines
+              if (!trimmed) {
+                return <div key={idx} className="h-1.5" />;
+              }
+
+              return (
+                <p key={idx} className="mb-2 last:mb-0">
+                  {parseFormattedLine(line)}
+                </p>
+              );
             })}
           </div>
         </div>

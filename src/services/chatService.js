@@ -12,7 +12,9 @@ export const chatService = {
    * Stream an answer from the backend (SSE over fetch so we can read tokens).
    */
   async getChatStream(message, conversationId = null) {
-    const headers = { "Content-Type": "application/json", "X-Guest-Id": getGuestId() };
+    const headers = { "Content-Type": "application/json" };
+    const guestId = getGuestId();
+    if (guestId) headers["X-Guest-Id"] = guestId;
     const token = getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -49,7 +51,7 @@ export const chatService = {
 
   async checkConnection() {
     try {
-      const res = await api.get("/health");
+      const res = await api.get("/api/health");
       return res.status >= 200 && res.status < 300;
     } catch {
       return false;

@@ -85,6 +85,18 @@ export default function GitHubConnectButton({ compact = false }) {
     }
   };
 
+  const handleSwitchAccount = () => {
+    const width = 600;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    window.open(
+      "https://github.com/logout",
+      "github_logout_popup",
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=yes`
+    );
+  };
+
   if (loading && !isConnected) {
     return (
       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 text-xs text-slate-500 dark:text-zinc-400">
@@ -113,19 +125,30 @@ export default function GitHubConnectButton({ compact = false }) {
   }
 
   return (
-    <button
-      onClick={handleConnect}
-      type="button"
-      className={`flex items-center gap-1.5 font-medium rounded-xl transition-all duration-200 cursor-pointer shadow-sm ${
-        compact
-          ? "px-2.5 py-1.5 text-xs bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700"
-          : "px-3 py-1.5 text-xs bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 dark:hover:bg-zinc-700 text-white border border-slate-700 dark:border-zinc-600 hover:scale-[1.02]"
-      }`}
-      title="Connect your GitHub account for dynamic per-user MCP repository insights"
-    >
-      <GitHubIcon className="w-3.5 h-3.5 text-indigo-400" />
-      <span>Connect GitHub</span>
-      <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
-    </button>
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={handleConnect}
+        type="button"
+        className={`flex items-center gap-1.5 font-medium rounded-xl transition-all duration-200 cursor-pointer shadow-sm ${
+          compact
+            ? "px-2.5 py-1.5 text-xs bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700"
+            : "px-3 py-1.5 text-xs bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 dark:hover:bg-zinc-700 text-white border border-slate-700 dark:border-zinc-600 hover:scale-[1.02]"
+        }`}
+        title="Connect your GitHub account for dynamic per-user MCP repository insights"
+      >
+        <GitHubIcon className="w-3.5 h-3.5 text-indigo-400" />
+        <span>Connect GitHub</span>
+        <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
+      </button>
+
+      <button
+        onClick={handleSwitchAccount}
+        type="button"
+        className="text-[11px] text-slate-400 dark:text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline cursor-pointer transition-colors"
+        title="Log out of GitHub.com in popup to sign in as a different account"
+      >
+        Switch Account
+      </button>
+    </div>
   );
 }

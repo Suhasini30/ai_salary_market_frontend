@@ -53,12 +53,6 @@ export default function Navbar({ onClearChat, isConnected = true }) {
           <span>LLM: Gemini / Groq</span>
         </div>
 
-        {/* GitHub OAuth Status & Connect button */}
-        <GitHubConnectButton />
-
-        {/* Theme Toggle Button */}
-        <ThemeToggle />
-
         {/* Account: signed-in user email + sign out, or sign-in link */}
         {userIsLoggedIn && userEmail ? (
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs text-slate-800 dark:text-zinc-200">

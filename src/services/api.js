@@ -7,6 +7,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const GUEST_ID_KEY = "rag_guest_id";
 
 export function getGuestId() {
+  if (typeof window === "undefined") return null;
   let id = null;
   try {
     id = window.localStorage.getItem(GUEST_ID_KEY);
@@ -21,6 +22,15 @@ export function getGuestId() {
     id = null;
   }
   return id;
+}
+
+export function clearGuestId() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(GUEST_ID_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 let accessToken = null;
@@ -43,7 +53,10 @@ api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
-  config.headers["X-Guest-Id"] = getGuestId();
+  const guestId = getGuestId();
+  if (guestId) {
+    config.headers["X-Guest-Id"] = guestId;
+  }
   return config;
 });
 
